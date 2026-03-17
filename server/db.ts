@@ -1,6 +1,17 @@
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import { 
+  InsertUser, users,
+  Competitor, InsertCompetitor, competitors,
+  FinancingEvent, InsertFinancingEvent, financingEvents,
+  ProductRelease, InsertProductRelease, productReleases,
+  PersonnelChange, InsertPersonnelChange, personnelChanges,
+  NewsArticle, InsertNewsArticle, newsArticles,
+  OrganizationStructure, InsertOrganizationStructure, organizationStructure,
+  AnalysisReport, InsertAnalysisReport, analysisReports,
+  ComparisonMetrics, InsertComparisonMetrics, comparisonMetrics,
+  ScrapingTask, InsertScrapingTask, scrapingTasks
+} from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -89,4 +100,144 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+/**
+ * Competitor queries
+ */
+export async function getAllCompetitors() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(competitors);
+}
+
+export async function getCompetitorById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(competitors).where(eq(competitors.id, id)).limit(1);
+  return result[0];
+}
+
+export async function createCompetitor(data: InsertCompetitor) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(competitors).values(data);
+  return result;
+}
+
+export async function updateCompetitor(id: number, data: Partial<InsertCompetitor>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.update(competitors).set(data).where(eq(competitors.id, id));
+}
+
+export async function deleteCompetitor(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.delete(competitors).where(eq(competitors.id, id));
+}
+
+/**
+ * Financing events queries
+ */
+export async function getFinancingEventsByCompetitorId(competitorId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(financingEvents).where(eq(financingEvents.competitorId, competitorId));
+}
+
+/**
+ * Product releases queries
+ */
+export async function getProductReleasesByCompetitorId(competitorId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(productReleases).where(eq(productReleases.competitorId, competitorId));
+}
+
+/**
+ * Personnel changes queries
+ */
+export async function getPersonnelChangesByCompetitorId(competitorId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(personnelChanges).where(eq(personnelChanges.competitorId, competitorId));
+}
+
+/**
+ * News articles queries
+ */
+export async function getNewsArticlesByCompetitorId(competitorId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(newsArticles).where(eq(newsArticles.competitorId, competitorId));
+}
+
+/**
+ * Organization structure queries
+ */
+export async function getOrganizationStructureByCompetitorId(competitorId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(organizationStructure).where(eq(organizationStructure.competitorId, competitorId));
+}
+
+/**
+ * Analysis reports queries
+ */
+export async function getAnalysisReportByCompetitorId(competitorId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(analysisReports).where(eq(analysisReports.competitorId, competitorId)).limit(1);
+  return result[0];
+}
+
+export async function createAnalysisReport(data: InsertAnalysisReport) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.insert(analysisReports).values(data);
+}
+
+/**
+ * Comparison metrics queries
+ */
+export async function getComparisonMetricsSnapshot(competitorId: number, date: Date) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(comparisonMetrics)
+    .where(eq(comparisonMetrics.competitorId, competitorId))
+    .orderBy(comparisonMetrics.snapshotDate)
+    .limit(1);
+  return result[0];
+}
+
+export async function createComparisonMetrics(data: InsertComparisonMetrics) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.insert(comparisonMetrics).values(data);
+}
+
+/**
+ * Scraping tasks queries
+ */
+export async function getScrapingTasks() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(scrapingTasks);
+}
+
+export async function getScrapingTasksByCompetitorId(competitorId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(scrapingTasks).where(eq(scrapingTasks.competitorId, competitorId));
+}
+
+export async function createScrapingTask(data: InsertScrapingTask) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.insert(scrapingTasks).values(data);
+}
+
+export async function updateScrapingTask(id: number, data: Partial<InsertScrapingTask>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.update(scrapingTasks).set(data).where(eq(scrapingTasks.id, id));
+}

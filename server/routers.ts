@@ -1,10 +1,11 @@
+import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, router } from "./_core/trpc";
+import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
+import * as db from "./db";
 
 export const appRouter = router({
-    // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
@@ -17,12 +18,116 @@ export const appRouter = router({
     }),
   }),
 
-  // TODO: add feature routers here, e.g.
-  // todo: router({
-  //   list: protectedProcedure.query(({ ctx }) =>
-  //     db.getUserTodos(ctx.user.id)
-  //   ),
-  // }),
+  competitors: router({
+    list: publicProcedure.query(() => {
+      return db.getAllCompetitors();
+    }),
+
+    getById: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .query(({ input }) => {
+        return db.getCompetitorById(input.id);
+      }),
+
+    create: protectedProcedure
+      .input(z.object({
+        name: z.string(),
+        website: z.string().optional(),
+        industry: z.string().optional(),
+        foundingDate: z.date().optional(),
+        registeredCapital: z.string().optional(),
+        legalRepresentative: z.string().optional(),
+        businessScope: z.string().optional(),
+        registrationNumber: z.string().optional(),
+        headquartersLocation: z.string().optional(),
+        companySize: z.string().optional(),
+        financingStage: z.string().optional(),
+        logo: z.string().optional(),
+        description: z.string().optional(),
+      }))
+      .mutation(({ input, ctx }) => {
+        if (ctx.user?.role !== "admin") {
+          throw new Error("Only admins can create competitors");
+        }
+        return db.createCompetitor(input);
+      }),
+
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().optional(),
+        website: z.string().optional(),
+        industry: z.string().optional(),
+        foundingDate: z.date().optional(),
+        registeredCapital: z.string().optional(),
+        legalRepresentative: z.string().optional(),
+        businessScope: z.string().optional(),
+        registrationNumber: z.string().optional(),
+        headquartersLocation: z.string().optional(),
+        companySize: z.string().optional(),
+        financingStage: z.string().optional(),
+        logo: z.string().optional(),
+        description: z.string().optional(),
+      }))
+      .mutation(({ input, ctx }) => {
+        if (ctx.user?.role !== "admin") {
+          throw new Error("Only admins can update competitors");
+        }
+        const { id, ...data } = input;
+        return db.updateCompetitor(id, data);
+      }),
+
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(({ input, ctx }) => {
+        if (ctx.user?.role !== "admin") {
+          throw new Error("Only admins can delete competitors");
+        }
+        return db.deleteCompetitor(input.id);
+      }),
+  }),
+
+  dynamics: router({
+    getFinancingEvents: publicProcedure
+      .input(z.object({ competitorId: z.number() }))
+      .query(({ input }) => {
+        return db.getFinancingEventsByCompetitorId(input.competitorId);
+      }),
+
+    getProductReleases: publicProcedure
+      .input(z.object({ competitorId: z.number() }))
+      .query(({ input }) => {
+        return db.getProductReleasesByCompetitorId(input.competitorId);
+      }),
+
+    getPersonnelChanges: publicProcedure
+      .input(z.object({ competitorId: z.number() }))
+      .query(({ input }) => {
+        return db.getPersonnelChangesByCompetitorId(input.competitorId);
+      }),
+
+    getNewsArticles: publicProcedure
+      .input(z.object({ competitorId: z.number() }))
+      .query(({ input }) => {
+        return db.getNewsArticlesByCompetitorId(input.competitorId);
+      }),
+  }),
+
+  organization: router({
+    getStructure: publicProcedure
+      .input(z.object({ competitorId: z.number() }))
+      .query(({ input }) => {
+        return db.getOrganizationStructureByCompetitorId(input.competitorId);
+      }),
+  }),
+
+  reports: router({
+    getAnalysisReport: publicProcedure
+      .input(z.object({ competitorId: z.number() }))
+      .query(({ input }) => {
+        return db.getAnalysisReportByCompetitorId(input.competitorId);
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;
