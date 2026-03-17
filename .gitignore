@@ -109,3 +109,7 @@ temp/
 
 # Webdev artifacts (checkpoint zips, migrations, etc.)
 .webdev/
+
+# Local Manus debugging artifacts
+.manus/
+.manus-logs/
