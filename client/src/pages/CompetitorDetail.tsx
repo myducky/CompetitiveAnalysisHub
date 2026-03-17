@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft, Calendar, DollarSign, Users, FileText, TrendingUp, Building2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Loader2 } from "lucide-react";
+import { ReportGenerator } from "@/components/ReportGenerator";
 
 export default function CompetitorDetail() {
   const [, params] = useRoute("/competitor/:id");
@@ -303,53 +304,7 @@ export default function CompetitorDetail() {
 
           {/* Report Tab */}
           <TabsContent value="report">
-            {analysisReport ? (
-              <Card className="glass">
-                <CardHeader>
-                  <CardTitle>{analysisReport.title}</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {analysisReport.executiveSummary && (
-                    <div>
-                      <h3 className="text-lg font-semibold mb-2">执行摘要</h3>
-                      <p className="text-foreground whitespace-pre-wrap">
-                        {analysisReport.executiveSummary}
-                      </p>
-                    </div>
-                  )}
-                  {analysisReport.businessModel && (
-                    <div>
-                      <h3 className="text-lg font-semibold mb-2">商业模式</h3>
-                      <p className="text-foreground whitespace-pre-wrap">
-                        {analysisReport.businessModel}
-                      </p>
-                    </div>
-                  )}
-                  {analysisReport.competitiveAdvantages && (
-                    <div>
-                      <h3 className="text-lg font-semibold mb-2">竞争优势</h3>
-                      <p className="text-foreground whitespace-pre-wrap">
-                        {analysisReport.competitiveAdvantages}
-                      </p>
-                    </div>
-                  )}
-                  {analysisReport.riskFactors && (
-                    <div>
-                      <h3 className="text-lg font-semibold mb-2">风险因素</h3>
-                      <p className="text-foreground whitespace-pre-wrap">
-                        {analysisReport.riskFactors}
-                      </p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ) : (
-              <Card className="glass">
-                <CardContent className="py-12 text-center">
-                  <p className="text-muted-foreground">暂无深度分析报告</p>
-                </CardContent>
-              </Card>
-            )}
+            <ReportGenerator competitorId={competitorId!} competitorName={competitor.name} />
           </TabsContent>
         </Tabs>
       </main>

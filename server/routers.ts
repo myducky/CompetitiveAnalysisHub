@@ -127,6 +127,59 @@ export const appRouter = router({
       .query(({ input }) => {
         return db.getAnalysisReportByCompetitorId(input.competitorId);
       }),
+
+    generateReport: protectedProcedure
+      .input(z.object({ competitorId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        if (ctx.user?.role !== "admin") {
+          throw new Error("Only admins can generate reports");
+        }
+
+        const competitor = await db.getCompetitorById(input.competitorId);
+        if (!competitor) {
+          throw new Error("Competitor not found");
+        }
+
+        const [financingEvents, productReleases, personnelChanges, newsArticles, organizationStructure] = await Promise.all([
+          db.getFinancingEventsByCompetitorId(input.competitorId),
+          db.getProductReleasesByCompetitorId(input.competitorId),
+          db.getPersonnelChangesByCompetitorId(input.competitorId),
+          db.getNewsArticlesByCompetitorId(input.competitorId),
+          db.getOrganizationStructureByCompetitorId(input.competitorId),
+        ]);
+
+        const { generateCompetitorAnalysisReport, formatReportForDisplay } = await import("./reportGeneration");
+        const analysisReport = await generateCompetitorAnalysisReport(
+          competitor,
+          financingEvents,
+          productReleases,
+          personnelChanges,
+          newsArticles,
+          organizationStructure
+        );
+
+        const reportContent = formatReportForDisplay(analysisReport);
+
+        await db.createAnalysisReport({
+          competitorId: input.competitorId,
+          title: `${competitor.name} - 穿透式深度分析报告`,
+          executiveSummary: analysisReport.executiveSummary,
+          businessModel: analysisReport.businessModel,
+          competitiveAdvantages: analysisReport.competitiveAdvantages,
+          riskFactors: analysisReport.riskFactors,
+          marketPosition: analysisReport.marketPosition,
+          investmentPerspective: analysisReport.investmentPerspective,
+          strategicRecommendations: analysisReport.strategicRecommendations,
+          reportContent: reportContent,
+          generatedAt: new Date(),
+        });
+
+        return {
+          success: true,
+          message: "Report generated successfully",
+          report: analysisReport,
+        };
+      }),
   }),
 });
 
