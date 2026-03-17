@@ -8,14 +8,15 @@ import { Loader2, Search, TrendingUp, Users, Zap, BarChart3 } from "lucide-react
 import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { useState } from "react";
-import { useRoute } from "wouter";
+import { useLocation } from "wouter";
+import { CompetitorDialog } from "@/components/CompetitorDialog";
 
 export default function Home() {
   const { user, loading: authLoading, isAuthenticated, logout } = useAuth();
+  const [, setLocation] = useLocation();
   const [searchTerm, setSearchTerm] = useState("");
   const [industryFilter, setIndustryFilter] = useState("all");
   const [financingStageFilter, setFinancingStageFilter] = useState("all");
-  const [selectedCompetitorId, setSelectedCompetitorId] = useState<number | null>(null);
 
   const { data: competitors, isLoading: competitorsLoading } = trpc.competitors.list.useQuery();
 
@@ -48,18 +49,14 @@ export default function Home() {
       <div className="min-h-screen flex flex-col items-center justify-center bg-background px-4">
         <div className="max-w-md text-center space-y-6">
           <div className="space-y-2">
-            <h1 className="text-4xl font-bold gradient-text">竞品情报平台</h1>
-            <p className="text-lg text-muted-foreground">专业的竞品穿透式分析看板</p>
+            <h1 className="text-3xl font-bold gradient-text">竞品情报平台</h1>
+            <p className="text-muted-foreground">穿透式深度分析看板</p>
           </div>
-          <p className="text-muted-foreground">
-            获取深度的竞品分析、融资动态、团队结构、产品迭代等全方位情报
+          <p className="text-foreground">
+            登录以访问竞品情报分析平台，获取深度的竞争对手洞察。
           </p>
-          <Button
-            size="lg"
-            className="w-full"
-            onClick={() => (window.location.href = getLoginUrl())}
-          >
-            登录查看
+          <Button size="lg" asChild>
+            <a href={getLoginUrl()}>使用 Manus 登录</a>
           </Button>
         </div>
       </div>
@@ -192,11 +189,16 @@ export default function Home() {
 
         {/* Competitors Grid */}
         <div>
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold">竞品列表</h2>
-            <p className="text-muted-foreground mt-1">
-              共 {filteredCompetitors.length} 个竞品
-            </p>
+          <div className="mb-6 flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-bold">竞品列表</h2>
+              <p className="text-muted-foreground mt-1">
+                共 {filteredCompetitors.length} 个竞品
+              </p>
+            </div>
+            {user?.role === "admin" && (
+              <CompetitorDialog mode="create" />
+            )}
           </div>
 
           {competitorsLoading ? (
@@ -215,7 +217,7 @@ export default function Home() {
                 <Card
                   key={competitor.id}
                   className="glass card-hover cursor-pointer"
-                  onClick={() => setSelectedCompetitorId(competitor.id)}
+                  onClick={() => setLocation(`/competitor/${competitor.id}`)}
                 >
                   <CardHeader>
                     <div className="flex items-start justify-between gap-4">
@@ -260,17 +262,26 @@ export default function Home() {
                         <Badge className="badge-muted">{competitor.financingStage}</Badge>
                       </div>
                     )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full mt-4"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedCompetitorId(competitor.id);
-                      }}
-                    >
-                      查看详情
-                    </Button>
+                    <div className="flex gap-2 pt-2 border-t border-border/30">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setLocation(`/competitor/${competitor.id}`);
+                        }}
+                      >
+                        查看详情
+                      </Button>
+                      {user?.role === "admin" && (
+                        <CompetitorDialog
+                          competitor={competitor}
+                          mode="edit"
+                          onSuccess={() => {}}
+                        />
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
               ))}
