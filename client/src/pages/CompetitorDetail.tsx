@@ -50,6 +50,8 @@ export default function CompetitorDetail() {
     { enabled: !!competitorId }
   );
 
+  const utils = trpc.useUtils();
+
   if (competitorLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">

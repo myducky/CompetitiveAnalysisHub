@@ -20,6 +20,8 @@ export function ReportGenerator({ competitorId, competitorName }: ReportGenerato
     { enabled: !!competitorId }
   );
 
+  const utils = trpc.useUtils();
+
   const generateReportMutation = trpc.reports.generateReport.useMutation();
 
   const handleGenerateReport = async () => {

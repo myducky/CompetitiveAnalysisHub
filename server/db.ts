@@ -185,9 +185,9 @@ export async function getOrganizationStructureByCompetitorId(competitorId: numbe
  */
 export async function getAnalysisReportByCompetitorId(competitorId: number) {
   const db = await getDb();
-  if (!db) return undefined;
+  if (!db) return null;
   const result = await db.select().from(analysisReports).where(eq(analysisReports.competitorId, competitorId)).limit(1);
-  return result[0];
+  return result[0] || null;
 }
 
 export async function createAnalysisReport(data: InsertAnalysisReport) {
