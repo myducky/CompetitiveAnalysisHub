@@ -65,6 +65,7 @@ function createMockContext(role: "admin" | "user" = "user"): TrpcContext {
       id: 1,
       openId: "test-user",
       email: "test@example.com",
+      passwordHash: null,
       name: "Test User",
       loginMethod: "manus",
       role: role,

@@ -5,18 +5,20 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Search, TrendingUp, Users, Zap, BarChart3 } from "lucide-react";
-import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { CompetitorDialog } from "@/components/CompetitorDialog";
+import { toast } from "sonner";
 
 export default function Home() {
-  const { user, loading: authLoading, isAuthenticated, logout } = useAuth();
+  const { user, loading: authLoading, isAuthenticated, logout, loginWithPassword, authSubmitting } = useAuth();
   const [, setLocation] = useLocation();
   const [searchTerm, setSearchTerm] = useState("");
   const [industryFilter, setIndustryFilter] = useState("all");
   const [financingStageFilter, setFinancingStageFilter] = useState("all");
+  const [identifier, setIdentifier] = useState("admin");
+  const [password, setPassword] = useState("admin");
 
   const { data: competitors, isLoading: competitorsLoading } = trpc.competitors.list.useQuery();
 
@@ -45,20 +47,60 @@ export default function Home() {
   }
 
   if (!isAuthenticated) {
+    const handlePasswordLogin = async (event: React.FormEvent) => {
+      event.preventDefault();
+      try {
+        await loginWithPassword(identifier, password);
+        toast.success("登录成功");
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "登录失败");
+      }
+    };
+
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-background px-4">
-        <div className="max-w-md text-center space-y-6">
-          <div className="space-y-2">
-            <h1 className="text-3xl font-bold gradient-text">竞品情报平台</h1>
-            <p className="text-muted-foreground">穿透式深度分析看板</p>
-          </div>
-          <p className="text-foreground">
-            登录以访问竞品情报分析平台，获取深度的竞争对手洞察。
-          </p>
-          <Button size="lg" asChild>
-            <a href={getLoginUrl()}>使用 Manus 登录</a>
-          </Button>
-        </div>
+      <div className="min-h-screen flex items-center justify-center bg-background px-4">
+        <Card className="glass w-full max-w-md">
+          <CardHeader className="space-y-2 text-center">
+            <CardTitle className="text-3xl font-bold gradient-text">竞品情报平台</CardTitle>
+            <CardDescription>账号密码登录，系统不开放注册</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form className="space-y-4" onSubmit={handlePasswordLogin}>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">账号</label>
+                <Input
+                  value={identifier}
+                  onChange={(event) => setIdentifier(event.target.value)}
+                  autoComplete="username"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">密码</label>
+                <Input
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  autoComplete="current-password"
+                />
+              </div>
+              <Button className="w-full" type="submit" size="lg" disabled={authSubmitting}>
+                {authSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    登录中...
+                  </>
+                ) : (
+                  "登录"
+                )}
+              </Button>
+            </form>
+            <div className="mt-4 rounded-xl border border-border/40 bg-muted/40 p-4 text-sm text-muted-foreground">
+              初始账号：`admin`
+              <br />
+              初始密码：`admin`
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -73,7 +115,7 @@ export default function Home() {
             <p className="text-sm text-muted-foreground">穿透式深度分析看板</p>
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-muted-foreground">{user?.name}</span>
+            <span className="text-sm text-muted-foreground">{user?.name ?? user?.email}</span>
             <Button variant="ghost" size="sm" onClick={logout}>
               退出
             </Button>

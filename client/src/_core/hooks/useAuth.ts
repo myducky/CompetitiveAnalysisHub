@@ -1,16 +1,8 @@
-import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { TRPCClientError } from "@trpc/client";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useMemo } from "react";
 
-type UseAuthOptions = {
-  redirectOnUnauthenticated?: boolean;
-  redirectPath?: string;
-};
-
-export function useAuth(options?: UseAuthOptions) {
-  const { redirectOnUnauthenticated = false, redirectPath = getLoginUrl() } =
-    options ?? {};
+export function useAuth() {
   const utils = trpc.useUtils();
 
   const meQuery = trpc.auth.me.useQuery(undefined, {
@@ -21,6 +13,13 @@ export function useAuth(options?: UseAuthOptions) {
   const logoutMutation = trpc.auth.logout.useMutation({
     onSuccess: () => {
       utils.auth.me.setData(undefined, null);
+    },
+  });
+
+  const loginMutation = trpc.auth.login.useMutation({
+    onSuccess: async (result) => {
+      utils.auth.me.setData(undefined, result.user ?? null);
+      await utils.auth.me.invalidate();
     },
   });
 
@@ -41,6 +40,10 @@ export function useAuth(options?: UseAuthOptions) {
     }
   }, [logoutMutation, utils]);
 
+  const loginWithPassword = useCallback(async (identifier: string, password: string) => {
+    return loginMutation.mutateAsync({ identifier, password });
+  }, [loginMutation]);
+
   const state = useMemo(() => {
     localStorage.setItem(
       "manus-runtime-user-info",
@@ -48,11 +51,14 @@ export function useAuth(options?: UseAuthOptions) {
     );
     return {
       user: meQuery.data ?? null,
-      loading: meQuery.isLoading || logoutMutation.isPending,
-      error: meQuery.error ?? logoutMutation.error ?? null,
+      loading: meQuery.isLoading,
+      error: meQuery.error ?? logoutMutation.error ?? loginMutation.error ?? null,
+      authSubmitting: loginMutation.isPending || logoutMutation.isPending,
       isAuthenticated: Boolean(meQuery.data),
     };
   }, [
+    loginMutation.error,
+    loginMutation.isPending,
     meQuery.data,
     meQuery.error,
     meQuery.isLoading,
@@ -60,24 +66,9 @@ export function useAuth(options?: UseAuthOptions) {
     logoutMutation.isPending,
   ]);
 
-  useEffect(() => {
-    if (!redirectOnUnauthenticated) return;
-    if (meQuery.isLoading || logoutMutation.isPending) return;
-    if (state.user) return;
-    if (typeof window === "undefined") return;
-    if (window.location.pathname === redirectPath) return;
-
-    window.location.href = redirectPath
-  }, [
-    redirectOnUnauthenticated,
-    redirectPath,
-    logoutMutation.isPending,
-    meQuery.isLoading,
-    state.user,
-  ]);
-
   return {
     ...state,
+    loginWithPassword,
     refresh: () => meQuery.refetch(),
     logout,
   };

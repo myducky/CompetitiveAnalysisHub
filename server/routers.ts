@@ -1,14 +1,49 @@
 import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
+import { TRPCError } from "@trpc/server";
 import { getSessionCookieOptions } from "./_core/cookies";
+import { sdk } from "./_core/sdk";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import * as db from "./db";
+import { normalizeIdentifier, verifyPassword } from "./localAuth";
 
 export const appRouter = router({
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
+    login: publicProcedure
+      .input(z.object({
+        identifier: z.string().min(1),
+        password: z.string().min(1),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const user = await db.getUserByIdentifier(normalizeIdentifier(input.identifier));
+
+        if (!user || !verifyPassword(input.password, user.passwordHash)) {
+          throw new TRPCError({
+            code: "UNAUTHORIZED",
+            message: "账号或密码错误",
+          });
+        }
+
+        const sessionToken = await sdk.createSessionToken(user.openId, {
+          name: user.name ?? user.email ?? "",
+        });
+
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        (ctx.res as any).cookie(COOKIE_NAME, sessionToken, cookieOptions);
+
+        await db.upsertUser({
+          openId: user.openId,
+          lastSignedIn: new Date(),
+        });
+
+        return {
+          success: true,
+          user: await db.getUserByOpenId(user.openId),
+        } as const;
+      }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });

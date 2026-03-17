@@ -1,0 +1,13 @@
+node_modules
+dist
+.git
+.gitignore
+.DS_Store
+.manus
+.manus-logs
+coverage
+tmp
+temp
+npm-debug.log*
+pnpm-debug.log*
+package-lock.json

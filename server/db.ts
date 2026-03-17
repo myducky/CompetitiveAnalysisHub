@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { 
   InsertUser, users,
@@ -13,6 +13,7 @@ import {
   ScrapingTask, InsertScrapingTask, scrapingTasks
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
+import { buildLocalOpenId, hashPassword, normalizeEmail, normalizeIdentifier } from "./localAuth";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -27,6 +28,62 @@ export async function getDb() {
     }
   }
   return _db;
+}
+
+export async function ensureUsersAuthSchema() {
+  const db = await getDb();
+  if (!db) return;
+
+  const isIgnorableAlterError = (error: unknown, codes: string[], fragments: string[]) => {
+    const message = String(error);
+    const causeCode = (error as any)?.cause?.code;
+    return codes.includes(causeCode) || fragments.some(fragment => message.includes(fragment));
+  };
+
+  try {
+    await db.execute(sql`ALTER TABLE users ADD COLUMN passwordHash text NULL AFTER email`);
+  } catch (error) {
+    if (!isIgnorableAlterError(error, ["ER_DUP_FIELDNAME"], ["Duplicate column name"])) {
+      throw error;
+    }
+  }
+
+  try {
+    await db.execute(sql`ALTER TABLE users ADD UNIQUE KEY users_email_unique (email)`);
+  } catch (error) {
+    if (!isIgnorableAlterError(error, ["ER_DUP_KEYNAME", "ER_DUP_ENTRY"], ["Duplicate key name", "Duplicate entry"])) {
+      throw error;
+    }
+  }
+}
+
+export async function ensureInitialAdminUser() {
+  const db = await getDb();
+  if (!db) return;
+
+  await ensureUsersAuthSchema();
+
+  const username = normalizeIdentifier(ENV.initialAdminUsername);
+  if (!username || !ENV.initialAdminPassword) return;
+
+  await db.insert(users).values({
+    openId: buildLocalOpenId(username),
+    email: null,
+    passwordHash: hashPassword(ENV.initialAdminPassword),
+    name: username,
+    loginMethod: "email",
+    role: "admin",
+    lastSignedIn: new Date(),
+  }).onDuplicateKeyUpdate({
+    set: {
+      email: null,
+      passwordHash: hashPassword(ENV.initialAdminPassword),
+      loginMethod: "email",
+      name: username,
+      role: "admin",
+      updatedAt: sql`CURRENT_TIMESTAMP`,
+    },
+  });
 }
 
 export async function upsertUser(user: InsertUser): Promise<void> {
@@ -66,9 +123,6 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     if (user.role !== undefined) {
       values.role = user.role;
       updateSet.role = user.role;
-    } else if (user.openId === ENV.ownerOpenId) {
-      values.role = 'admin';
-      updateSet.role = 'admin';
     }
 
     if (!values.lastSignedIn) {
@@ -98,6 +152,22 @@ export async function getUserByOpenId(openId: string) {
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
 
   return result.length > 0 ? result[0] : undefined;
+}
+
+export async function getUserByEmail(email: string) {
+  const db = await getDb();
+  if (!db) {
+    console.warn("[Database] Cannot get user: database not available");
+    return undefined;
+  }
+
+  const normalizedEmail = normalizeEmail(email);
+  const result = await db.select().from(users).where(eq(users.email, normalizedEmail)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function getUserByIdentifier(identifier: string) {
+  return getUserByOpenId(buildLocalOpenId(identifier));
 }
 
 /**

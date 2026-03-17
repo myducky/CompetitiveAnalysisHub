@@ -1,0 +1,48 @@
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: competitive_analysis_hub
+      MYSQL_USER: app
+      MYSQL_PASSWORD: app_password
+      MYSQL_ROOT_PASSWORD: root_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./drizzle/0000_classy_terror.sql:/docker-entrypoint-initdb.d/0000_classy_terror.sql:ro
+      - ./drizzle/0001_nebulous_pete_wisdom.sql:/docker-entrypoint-initdb.d/0001_nebulous_pete_wisdom.sql:ro
+      - ./drizzle/0002_local_auth.sql:/docker-entrypoint-initdb.d/0002_local_auth.sql:ro
+      - ./docker/mysql/initdb/100_seed_demo.sql:/docker-entrypoint-initdb.d/100_seed_demo.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uapp", "-papp_password"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 3000
+      DATABASE_URL: mysql://app:app_password@db:3306/competitive_analysis_hub
+      JWT_SECRET: local-dev-secret-change-me
+      INITIAL_ADMIN_USERNAME: "admin"
+      INITIAL_ADMIN_PASSWORD: "admin"
+      BUILT_IN_FORGE_API_URL: ""
+      BUILT_IN_FORGE_API_KEY: ""
+      VITE_ANALYTICS_ENDPOINT: ""
+      VITE_ANALYTICS_WEBSITE_ID: ""
+      VITE_FRONTEND_FORGE_API_URL: ""
+      VITE_FRONTEND_FORGE_API_KEY: ""
+    ports:
+      - "3000:3000"
+
+volumes:
+  mysql_data:
