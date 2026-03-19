@@ -2,11 +2,70 @@ import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
 import { TRPCError } from "@trpc/server";
 import { getSessionCookieOptions } from "./_core/cookies";
+import { ENV } from "./_core/env";
 import { sdk } from "./_core/sdk";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 import { normalizeIdentifier, verifyPassword } from "./localAuth";
+import { collectCompetitorIntelligence, ensureDefaultSourcesForCompetitor } from "./intelligence";
+import {
+  collectPromotedDiscoverySources,
+  executeQueryDiscoveryTargets,
+  promoteAllDiscoveryTargets,
+  promoteDiscoveryTarget,
+  runWebDiscovery,
+} from "./discovery";
+
+function normalizeWebsiteInput(website?: string) {
+  if (!website) {
+    return undefined;
+  }
+
+  const trimmed = website.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+
+  try {
+    const parsed = new URL(withProtocol);
+    if (!parsed.hostname) {
+      throw new Error("missing hostname");
+    }
+    return parsed.toString();
+  } catch {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "官网地址格式不正确，请输入可访问的完整网址",
+    });
+  }
+}
+
+async function runAutoCollectionWorkflow(competitorId: number) {
+  console.log(`[AutoCollection] Start competitor=${competitorId}`);
+  try {
+    await ensureDefaultSourcesForCompetitor(competitorId);
+    console.log(`[AutoCollection] Sources ready competitor=${competitorId}`);
+    await collectCompetitorIntelligence(competitorId);
+    console.log(`[AutoCollection] Intelligence collected competitor=${competitorId}`);
+
+    if (ENV.searchProviderUrl && ENV.searchProviderApiKey) {
+      await runWebDiscovery(competitorId);
+      console.log(`[AutoCollection] Discovery finished competitor=${competitorId}`);
+      await executeQueryDiscoveryTargets(competitorId);
+      console.log(`[AutoCollection] Query targets executed competitor=${competitorId}`);
+      await promoteAllDiscoveryTargets(competitorId);
+      console.log(`[AutoCollection] Targets promoted competitor=${competitorId}`);
+      await collectPromotedDiscoverySources(competitorId);
+      console.log(`[AutoCollection] Promoted sources collected competitor=${competitorId}`);
+    }
+    console.log(`[AutoCollection] Completed competitor=${competitorId}`);
+  } catch (error) {
+    console.error(`[AutoCollection] Failed for competitor ${competitorId}:`, error);
+  }
+}
 
 export const appRouter = router({
   system: systemRouter,
@@ -80,11 +139,20 @@ export const appRouter = router({
         logo: z.string().optional(),
         description: z.string().optional(),
       }))
-      .mutation(({ input, ctx }) => {
+      .mutation(async ({ input, ctx }) => {
         if (ctx.user?.role !== "admin") {
           throw new Error("Only admins can create competitors");
         }
-        return db.createCompetitor(input);
+        const created = await db.createCompetitor({
+          ...input,
+          website: normalizeWebsiteInput(input.website),
+        });
+
+        if (created?.id) {
+          void runAutoCollectionWorkflow(created.id);
+        }
+
+        return created;
       }),
 
     update: protectedProcedure
@@ -109,16 +177,41 @@ export const appRouter = router({
           throw new Error("Only admins can update competitors");
         }
         const { id, ...data } = input;
-        return db.updateCompetitor(id, data);
+        return db.updateCompetitor(id, {
+          ...data,
+          website: data.website === undefined ? undefined : normalizeWebsiteInput(data.website),
+        });
+      }),
+
+    runResearch: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        if (ctx.user?.role !== "admin") {
+          throw new Error("Only admins can run competitor research");
+        }
+
+        const competitor = await db.getCompetitorById(input.id);
+        if (!competitor) {
+          throw new Error("Competitor not found");
+        }
+
+        void runAutoCollectionWorkflow(input.id);
+        return {
+          success: true,
+          queued: true,
+        } as const;
       }),
 
     delete: protectedProcedure
       .input(z.object({ id: z.number() }))
-      .mutation(({ input, ctx }) => {
+      .mutation(async ({ input, ctx }) => {
         if (ctx.user?.role !== "admin") {
           throw new Error("Only admins can delete competitors");
         }
-        return db.deleteCompetitor(input.id);
+        await db.deleteCompetitor(input.id);
+        return {
+          success: true,
+        } as const;
       }),
   }),
 
@@ -153,6 +246,112 @@ export const appRouter = router({
       .input(z.object({ competitorId: z.number() }))
       .query(({ input }) => {
         return db.getOrganizationStructureByCompetitorId(input.competitorId);
+      }),
+  }),
+
+  intelligence: router({
+    getSources: protectedProcedure
+      .input(z.object({ competitorId: z.number() }))
+      .query(({ input }) => db.getIntelligenceSourcesByCompetitorId(input.competitorId)),
+
+    getDocuments: protectedProcedure
+      .input(z.object({ competitorId: z.number() }))
+      .query(({ input }) => db.getSourceDocumentsByCompetitorId(input.competitorId)),
+
+    getEvents: protectedProcedure
+      .input(z.object({ competitorId: z.number() }))
+      .query(({ input }) => db.getIntelligenceEventsByCompetitorId(input.competitorId)),
+
+    ensureDefaultSources: protectedProcedure
+      .input(z.object({ competitorId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        if (ctx.user?.role !== "admin") {
+          throw new Error("Only admins can manage intelligence sources");
+        }
+
+        const sources = await ensureDefaultSourcesForCompetitor(input.competitorId);
+        return {
+          success: true,
+          sources,
+        };
+      }),
+
+    collect: protectedProcedure
+      .input(z.object({ competitorId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        if (ctx.user?.role !== "admin") {
+          throw new Error("Only admins can collect intelligence");
+        }
+
+        const result = await collectCompetitorIntelligence(input.competitorId);
+        return {
+          success: true,
+          result,
+        };
+      }),
+  }),
+
+  discovery: router({
+    getRuns: protectedProcedure
+      .input(z.object({ competitorId: z.number() }))
+      .query(({ input }) => db.getDiscoveryRunsByCompetitorId(input.competitorId)),
+
+    getTargets: protectedProcedure
+      .input(z.object({ competitorId: z.number() }))
+      .query(({ input }) => db.getDiscoveryTargetsByCompetitorId(input.competitorId)),
+
+    runWebDiscovery: protectedProcedure
+      .input(z.object({ competitorId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        if (ctx.user?.role !== "admin") {
+          throw new Error("Only admins can run web discovery");
+        }
+
+        const result = await runWebDiscovery(input.competitorId);
+        return {
+          success: true,
+          result,
+        };
+      }),
+
+    promoteTarget: protectedProcedure
+      .input(z.object({ targetId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        if (ctx.user?.role !== "admin") {
+          throw new Error("Only admins can promote discovery targets");
+        }
+
+        return promoteDiscoveryTarget(input.targetId);
+      }),
+
+    promoteAllTargets: protectedProcedure
+      .input(z.object({ competitorId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        if (ctx.user?.role !== "admin") {
+          throw new Error("Only admins can promote discovery targets");
+        }
+
+        return promoteAllDiscoveryTargets(input.competitorId);
+      }),
+
+    collectPromotedSources: protectedProcedure
+      .input(z.object({ competitorId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        if (ctx.user?.role !== "admin") {
+          throw new Error("Only admins can collect promoted sources");
+        }
+
+        return collectPromotedDiscoverySources(input.competitorId);
+      }),
+
+    executeQueryTargets: protectedProcedure
+      .input(z.object({ competitorId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        if (ctx.user?.role !== "admin") {
+          throw new Error("Only admins can execute query targets");
+        }
+
+        return executeQueryDiscoveryTargets(input.competitorId);
       }),
   }),
 

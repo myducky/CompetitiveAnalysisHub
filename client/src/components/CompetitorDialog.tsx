@@ -22,6 +22,7 @@ import { Plus, Pencil, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import type { Competitor } from "../../../drizzle/schema";
+import { useLocation } from "wouter";
 
 interface CompetitorDialogProps {
   competitor?: Competitor;
@@ -34,6 +35,7 @@ export function CompetitorDialog({
   onSuccess,
   mode = "create",
 }: CompetitorDialogProps) {
+  const [, setLocation] = useLocation();
   const [open, setOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
@@ -78,7 +80,7 @@ export function CompetitorDialog({
     setIsSubmitting(true);
     try {
       if (mode === "create") {
-        await createMutation.mutateAsync({
+        const created = await createMutation.mutateAsync({
           name: formData.name,
           website: formData.website || undefined,
           industry: formData.industry || undefined,
@@ -94,6 +96,16 @@ export function CompetitorDialog({
           description: formData.description || undefined,
         });
         toast.success("竞品添加成功！");
+        if (created?.id) {
+          await Promise.all([
+            utils.competitors.list.invalidate(),
+            utils.competitors.getById.invalidate({ id: created.id }),
+          ]);
+          setOpen(false);
+          onSuccess?.();
+          setLocation(`/competitor/${created.id}`);
+          return;
+        }
       } else if (competitor) {
         await updateMutation.mutateAsync({
           id: competitor.id,
@@ -121,9 +133,13 @@ export function CompetitorDialog({
       onSuccess?.();
     } catch (error) {
       console.error("Error:", error);
-      toast.error(
-        mode === "create" ? "添加竞品失败，请重试" : "更新竞品失败，请重试"
-      );
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : mode === "create"
+            ? "添加竞品失败，请重试"
+            : "更新竞品失败，请重试";
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }
@@ -184,7 +200,7 @@ export function CompetitorDialog({
                 type="url"
                 value={formData.website}
                 onChange={handleInputChange}
-                placeholder="https://example.com"
+                placeholder="https://www.shopify.com"
               />
             </div>
 

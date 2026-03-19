@@ -7,13 +7,12 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, Search, TrendingUp, Users, Zap, BarChart3 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useState } from "react";
-import { useLocation } from "wouter";
 import { CompetitorDialog } from "@/components/CompetitorDialog";
+import { CompetitorCard } from "@/components/CompetitorCard";
 import { toast } from "sonner";
 
 export default function Home() {
   const { user, loading: authLoading, isAuthenticated, logout, loginWithPassword, authSubmitting } = useAuth();
-  const [, setLocation] = useLocation();
   const [searchTerm, setSearchTerm] = useState("");
   const [industryFilter, setIndustryFilter] = useState("all");
   const [financingStageFilter, setFinancingStageFilter] = useState("all");
@@ -256,76 +255,11 @@ export default function Home() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredCompetitors.map((competitor) => (
-                <Card
+                <CompetitorCard
                   key={competitor.id}
-                  className="glass card-hover cursor-pointer"
-                  onClick={() => setLocation(`/competitor/${competitor.id}`)}
-                >
-                  <CardHeader>
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1 min-w-0">
-                        <CardTitle className="line-clamp-2">{competitor.name}</CardTitle>
-                        {competitor.industry && (
-                          <Badge className="badge-accent mt-2">{competitor.industry}</Badge>
-                        )}
-                      </div>
-                      {competitor.logo && (
-                        <img
-                          src={competitor.logo}
-                          alt={competitor.name}
-                          className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
-                        />
-                      )}
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {competitor.foundingDate && (
-                      <div>
-                        <p className="text-xs text-muted-foreground">成立日期</p>
-                        <p className="text-sm font-medium">
-                          {new Date(competitor.foundingDate).toLocaleDateString("zh-CN")}
-                        </p>
-                      </div>
-                    )}
-                    {competitor.registeredCapital && (
-                      <div>
-                        <p className="text-xs text-muted-foreground">注册资本</p>
-                        <p className="text-sm font-medium">{competitor.registeredCapital}</p>
-                      </div>
-                    )}
-                    {competitor.legalRepresentative && (
-                      <div>
-                        <p className="text-xs text-muted-foreground">法人代表</p>
-                        <p className="text-sm font-medium">{competitor.legalRepresentative}</p>
-                      </div>
-                    )}
-                    {competitor.financingStage && (
-                      <div>
-                        <Badge className="badge-muted">{competitor.financingStage}</Badge>
-                      </div>
-                    )}
-                    <div className="flex gap-2 pt-2 border-t border-border/30">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setLocation(`/competitor/${competitor.id}`);
-                        }}
-                      >
-                        查看详情
-                      </Button>
-                      {user?.role === "admin" && (
-                        <CompetitorDialog
-                          competitor={competitor}
-                          mode="edit"
-                          onSuccess={() => {}}
-                        />
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
+                  competitor={competitor}
+                  isAdmin={user?.role === "admin"}
+                />
               ))}
             </div>
           )}

@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { 
   InsertUser, users,
@@ -10,7 +10,12 @@ import {
   OrganizationStructure, InsertOrganizationStructure, organizationStructure,
   AnalysisReport, InsertAnalysisReport, analysisReports,
   ComparisonMetrics, InsertComparisonMetrics, comparisonMetrics,
-  ScrapingTask, InsertScrapingTask, scrapingTasks
+  ScrapingTask, InsertScrapingTask, scrapingTasks,
+  IntelligenceSource, InsertIntelligenceSource, intelligenceSources,
+  SourceDocument, InsertSourceDocument, sourceDocuments,
+  IntelligenceEvent, InsertIntelligenceEvent, intelligenceEvents,
+  DiscoveryRun, InsertDiscoveryRun, discoveryRuns,
+  DiscoveryTarget, InsertDiscoveryTarget, discoveryTargets,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { buildLocalOpenId, hashPassword, normalizeEmail, normalizeIdentifier } from "./localAuth";
@@ -84,6 +89,31 @@ export async function ensureInitialAdminUser() {
       updatedAt: sql`CURRENT_TIMESTAMP`,
     },
   });
+}
+
+export async function removeDemoCompetitors() {
+  const db = await getDb();
+  if (!db) return;
+
+  const demoNames = [
+    "ShopFlow",
+    "MarketPulse",
+    "GlobalReach",
+    "Shopify",
+    "Similarweb",
+    "ShipBob",
+  ];
+
+  const existing = await db.select({
+    id: competitors.id,
+    name: competitors.name,
+  }).from(competitors);
+
+  for (const competitor of existing) {
+    if (demoNames.includes(competitor.name)) {
+      await deleteCompetitor(competitor.id);
+    }
+  }
 }
 
 export async function upsertUser(user: InsertUser): Promise<void> {
@@ -186,22 +216,47 @@ export async function getCompetitorById(id: number) {
   return result[0];
 }
 
+export async function getCompetitorByWebsite(website: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(competitors).where(eq(competitors.website, website)).limit(1);
+  return result[0];
+}
+
 export async function createCompetitor(data: InsertCompetitor) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(competitors).values(data);
-  return result;
+  await db.insert(competitors).values(data);
+
+  const [created] = await db.select().from(competitors).orderBy(desc(competitors.id)).limit(1);
+  return created;
 }
 
 export async function updateCompetitor(id: number, data: Partial<InsertCompetitor>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  return db.update(competitors).set(data).where(eq(competitors.id, id));
+  await db.update(competitors).set(data).where(eq(competitors.id, id));
+  return getCompetitorById(id);
 }
 
 export async function deleteCompetitor(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+
+  await db.delete(financingEvents).where(eq(financingEvents.competitorId, id));
+  await db.delete(productReleases).where(eq(productReleases.competitorId, id));
+  await db.delete(personnelChanges).where(eq(personnelChanges.competitorId, id));
+  await db.delete(newsArticles).where(eq(newsArticles.competitorId, id));
+  await db.delete(organizationStructure).where(eq(organizationStructure.competitorId, id));
+  await db.delete(analysisReports).where(eq(analysisReports.competitorId, id));
+  await db.delete(comparisonMetrics).where(eq(comparisonMetrics.competitorId, id));
+  await db.delete(scrapingTasks).where(eq(scrapingTasks.competitorId, id));
+  await db.delete(intelligenceEvents).where(eq(intelligenceEvents.competitorId, id));
+  await db.delete(sourceDocuments).where(eq(sourceDocuments.competitorId, id));
+  await db.delete(intelligenceSources).where(eq(intelligenceSources.competitorId, id));
+  await db.delete(discoveryTargets).where(eq(discoveryTargets.competitorId, id));
+  await db.delete(discoveryRuns).where(eq(discoveryRuns.competitorId, id));
+
   return db.delete(competitors).where(eq(competitors.id, id));
 }
 
@@ -241,6 +296,25 @@ export async function getNewsArticlesByCompetitorId(competitorId: number) {
   return db.select().from(newsArticles).where(eq(newsArticles.competitorId, competitorId));
 }
 
+export async function findNewsArticleByTitleOrUrl(competitorId: number, title: string, url?: string | null) {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const existingArticles = await db.select().from(newsArticles).where(eq(newsArticles.competitorId, competitorId));
+  return existingArticles.find((article) => {
+    if (url && article.url === url) {
+      return true;
+    }
+    return article.title === title;
+  });
+}
+
+export async function createNewsArticle(data: InsertNewsArticle) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.insert(newsArticles).values(data);
+}
+
 /**
  * Organization structure queries
  */
@@ -248,6 +322,12 @@ export async function getOrganizationStructureByCompetitorId(competitorId: numbe
   const db = await getDb();
   if (!db) return [];
   return db.select().from(organizationStructure).where(eq(organizationStructure.competitorId, competitorId));
+}
+
+export async function createOrganizationStructure(data: InsertOrganizationStructure) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.insert(organizationStructure).values(data);
 }
 
 /**
@@ -291,13 +371,35 @@ export async function createComparisonMetrics(data: InsertComparisonMetrics) {
 export async function getScrapingTasks() {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(scrapingTasks);
+  return db.select().from(scrapingTasks).orderBy(desc(scrapingTasks.createdAt));
 }
 
 export async function getScrapingTasksByCompetitorId(competitorId: number) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(scrapingTasks).where(eq(scrapingTasks.competitorId, competitorId));
+  return db.select().from(scrapingTasks)
+    .where(eq(scrapingTasks.competitorId, competitorId))
+    .orderBy(desc(scrapingTasks.createdAt));
+}
+
+export async function getScrapingTaskById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(scrapingTasks).where(eq(scrapingTasks.id, id)).limit(1);
+  return result[0];
+}
+
+export async function getScrapingTaskBySource(competitorId: number, taskType: string, dataSource: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(scrapingTasks)
+    .where(and(
+      eq(scrapingTasks.competitorId, competitorId),
+      eq(scrapingTasks.taskType, taskType),
+      eq(scrapingTasks.dataSource, dataSource),
+    ))
+    .limit(1);
+  return result[0];
 }
 
 export async function createScrapingTask(data: InsertScrapingTask) {
@@ -310,4 +412,209 @@ export async function updateScrapingTask(id: number, data: Partial<InsertScrapin
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   return db.update(scrapingTasks).set(data).where(eq(scrapingTasks.id, id));
+}
+
+/**
+ * Intelligence source queries
+ */
+export async function getIntelligenceSourcesByCompetitorId(competitorId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(intelligenceSources)
+    .where(eq(intelligenceSources.competitorId, competitorId))
+    .orderBy(desc(intelligenceSources.createdAt));
+}
+
+export async function getIntelligenceSourceById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(intelligenceSources).where(eq(intelligenceSources.id, id)).limit(1);
+  return result[0];
+}
+
+export async function getIntelligenceSourceByUrl(competitorId: number, url: string, sourceType?: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const conditions = [
+    eq(intelligenceSources.competitorId, competitorId),
+    eq(intelligenceSources.url, url),
+  ];
+
+  if (sourceType) {
+    conditions.push(eq(intelligenceSources.sourceType, sourceType));
+  }
+
+  const result = await db.select().from(intelligenceSources)
+    .where(and(...conditions))
+    .limit(1);
+  return result[0];
+}
+
+export async function createIntelligenceSource(data: InsertIntelligenceSource) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.insert(intelligenceSources).values(data);
+}
+
+export async function updateIntelligenceSource(id: number, data: Partial<InsertIntelligenceSource>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.update(intelligenceSources).set(data).where(eq(intelligenceSources.id, id));
+}
+
+/**
+ * Source document queries
+ */
+export async function getSourceDocumentsByCompetitorId(competitorId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(sourceDocuments)
+    .where(eq(sourceDocuments.competitorId, competitorId))
+    .orderBy(desc(sourceDocuments.createdAt));
+}
+
+export async function getSourceDocumentById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(sourceDocuments).where(eq(sourceDocuments.id, id)).limit(1);
+  return result[0];
+}
+
+export async function getSourceDocumentByFingerprint(competitorId: number, fingerprint: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(sourceDocuments)
+    .where(and(
+      eq(sourceDocuments.competitorId, competitorId),
+      eq(sourceDocuments.fingerprint, fingerprint),
+    ))
+    .limit(1);
+  return result[0];
+}
+
+export async function getSourceDocumentByUrl(competitorId: number, canonicalUrl: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(sourceDocuments)
+    .where(and(
+      eq(sourceDocuments.competitorId, competitorId),
+      eq(sourceDocuments.canonicalUrl, canonicalUrl),
+    ))
+    .limit(1);
+  return result[0];
+}
+
+export async function createSourceDocument(data: InsertSourceDocument) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.insert(sourceDocuments).values(data);
+}
+
+export async function updateSourceDocument(id: number, data: Partial<InsertSourceDocument>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.update(sourceDocuments).set(data).where(eq(sourceDocuments.id, id));
+}
+
+/**
+ * Intelligence event queries
+ */
+export async function getIntelligenceEventsByCompetitorId(competitorId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(intelligenceEvents)
+    .where(eq(intelligenceEvents.competitorId, competitorId))
+    .orderBy(desc(intelligenceEvents.createdAt));
+}
+
+export async function createIntelligenceEvent(data: InsertIntelligenceEvent) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.insert(intelligenceEvents).values(data);
+}
+
+/**
+ * Discovery run queries
+ */
+export async function getDiscoveryRunsByCompetitorId(competitorId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(discoveryRuns)
+    .where(eq(discoveryRuns.competitorId, competitorId))
+    .orderBy(desc(discoveryRuns.createdAt));
+}
+
+export async function getDiscoveryRunById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(discoveryRuns).where(eq(discoveryRuns.id, id)).limit(1);
+  return result[0];
+}
+
+export async function createDiscoveryRun(data: InsertDiscoveryRun) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.insert(discoveryRuns).values(data);
+}
+
+export async function updateDiscoveryRun(id: number, data: Partial<InsertDiscoveryRun>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.update(discoveryRuns).set(data).where(eq(discoveryRuns.id, id));
+}
+
+/**
+ * Discovery target queries
+ */
+export async function getDiscoveryTargetsByCompetitorId(competitorId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(discoveryTargets)
+    .where(eq(discoveryTargets.competitorId, competitorId))
+    .orderBy(desc(discoveryTargets.createdAt));
+}
+
+export async function getDiscoveryTargetsByRunId(runId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(discoveryTargets)
+    .where(eq(discoveryTargets.runId, runId))
+    .orderBy(desc(discoveryTargets.createdAt));
+}
+
+export async function getDiscoveryTargetById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(discoveryTargets).where(eq(discoveryTargets.id, id)).limit(1);
+  return result[0];
+}
+
+export async function getDiscoveryTargetByUrl(competitorId: number, url: string, targetType?: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const conditions = [
+    eq(discoveryTargets.competitorId, competitorId),
+    eq(discoveryTargets.url, url),
+  ];
+
+  if (targetType) {
+    conditions.push(eq(discoveryTargets.targetType, targetType));
+  }
+
+  const result = await db.select().from(discoveryTargets)
+    .where(and(...conditions))
+    .limit(1);
+  return result[0];
+}
+
+export async function createDiscoveryTarget(data: InsertDiscoveryTarget) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.insert(discoveryTargets).values(data);
+}
+
+export async function updateDiscoveryTarget(id: number, data: Partial<InsertDiscoveryTarget>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.update(discoveryTargets).set(data).where(eq(discoveryTargets.id, id));
 }

@@ -216,3 +216,109 @@ export const scrapingTasks = mysqlTable("scrapingTasks", {
 
 export type ScrapingTask = typeof scrapingTasks.$inferSelect;
 export type InsertScrapingTask = typeof scrapingTasks.$inferInsert;
+
+/**
+ * Source registry table - stores configured discovery/collection endpoints for each competitor
+ */
+export const intelligenceSources = mysqlTable("intelligenceSources", {
+  id: int("id").autoincrement().primaryKey(),
+  competitorId: int("competitorId").notNull(),
+  sourceType: varchar("sourceType", { length: 50 }).notNull(), // website, blog, news_search, jobs, registry, social
+  label: varchar("label", { length: 255 }).notNull(),
+  url: varchar("url", { length: 500 }).notNull(),
+  status: mysqlEnum("status", ["active", "paused"]).default("active").notNull(),
+  trustTier: mysqlEnum("trustTier", ["high", "medium", "low"]).default("medium").notNull(),
+  collectionMode: varchar("collectionMode", { length: 50 }).default("manual"),
+  metadata: json("metadata"),
+  lastCollectedAt: timestamp("lastCollectedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type IntelligenceSource = typeof intelligenceSources.$inferSelect;
+export type InsertIntelligenceSource = typeof intelligenceSources.$inferInsert;
+
+/**
+ * Raw source documents table - stores fetched pages/articles before extraction
+ */
+export const sourceDocuments = mysqlTable("sourceDocuments", {
+  id: int("id").autoincrement().primaryKey(),
+  competitorId: int("competitorId").notNull(),
+  sourceId: int("sourceId"),
+  documentType: varchar("documentType", { length: 50 }).notNull(), // webpage, article, job_posting, registry_record
+  title: varchar("title", { length: 500 }),
+  canonicalUrl: varchar("canonicalUrl", { length: 500 }).notNull(),
+  publishedAt: timestamp("publishedAt"),
+  author: varchar("author", { length: 255 }),
+  contentText: text("contentText"),
+  summary: text("summary"),
+  rawPayload: text("rawPayload"),
+  fingerprint: varchar("fingerprint", { length: 128 }).notNull(),
+  extractionStatus: mysqlEnum("extractionStatus", ["pending", "processed", "failed"]).default("pending").notNull(),
+  extractedAt: timestamp("extractedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type SourceDocument = typeof sourceDocuments.$inferSelect;
+export type InsertSourceDocument = typeof sourceDocuments.$inferInsert;
+
+/**
+ * Structured intelligence events extracted from raw documents
+ */
+export const intelligenceEvents = mysqlTable("intelligenceEvents", {
+  id: int("id").autoincrement().primaryKey(),
+  competitorId: int("competitorId").notNull(),
+  sourceDocumentId: int("sourceDocumentId"),
+  eventType: varchar("eventType", { length: 50 }).notNull(), // company_profile, news, product_update, hiring_signal, risk_signal
+  title: varchar("title", { length: 500 }).notNull(),
+  eventDate: timestamp("eventDate"),
+  confidenceScore: decimal("confidenceScore", { precision: 5, scale: 2 }),
+  payload: json("payload"),
+  evidenceSnippet: text("evidenceSnippet"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type IntelligenceEvent = typeof intelligenceEvents.$inferSelect;
+export type InsertIntelligenceEvent = typeof intelligenceEvents.$inferInsert;
+
+/**
+ * Discovery runs table - stores model-driven web discovery sessions
+ */
+export const discoveryRuns = mysqlTable("discoveryRuns", {
+  id: int("id").autoincrement().primaryKey(),
+  competitorId: int("competitorId").notNull(),
+  mode: varchar("mode", { length: 50 }).notNull(), // web_search, source_expansion
+  status: mysqlEnum("status", ["pending", "completed", "failed"]).default("pending").notNull(),
+  queryPlan: json("queryPlan"),
+  summary: text("summary"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type DiscoveryRun = typeof discoveryRuns.$inferSelect;
+export type InsertDiscoveryRun = typeof discoveryRuns.$inferInsert;
+
+/**
+ * Discovery targets table - stores candidate URLs/queries found during a discovery run
+ */
+export const discoveryTargets = mysqlTable("discoveryTargets", {
+  id: int("id").autoincrement().primaryKey(),
+  competitorId: int("competitorId").notNull(),
+  runId: int("runId").notNull(),
+  targetType: varchar("targetType", { length: 50 }).notNull(), // news, jobs, registry, social, website
+  title: varchar("title", { length: 500 }).notNull(),
+  url: varchar("url", { length: 500 }),
+  query: varchar("query", { length: 500 }),
+  rationale: text("rationale"),
+  confidenceScore: decimal("confidenceScore", { precision: 5, scale: 2 }),
+  trustTier: mysqlEnum("trustTier", ["high", "medium", "low"]).default("medium").notNull(),
+  status: mysqlEnum("status", ["new", "promoted", "discarded"]).default("new").notNull(),
+  metadata: json("metadata"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type DiscoveryTarget = typeof discoveryTargets.$inferSelect;
+export type InsertDiscoveryTarget = typeof discoveryTargets.$inferInsert;

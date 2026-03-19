@@ -4,10 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Calendar, DollarSign, Users, FileText, TrendingUp, Building2 } from "lucide-react";
+import { ArrowLeft, Calendar, DollarSign, Users, FileText, TrendingUp, Building2, Loader2, RefreshCw } from "lucide-react";
 import { trpc } from "@/lib/trpc";
-import { Loader2 } from "lucide-react";
 import { ReportGenerator } from "@/components/ReportGenerator";
+import { IntelligencePanel } from "@/components/IntelligencePanel";
+import { DiscoveryPanel } from "@/components/DiscoveryPanel";
+import { DemoWorkflowPanel } from "@/components/DemoWorkflowPanel";
+import { toast } from "sonner";
 
 export default function CompetitorDetail() {
   const [, params] = useRoute("/competitor/:id");
@@ -51,6 +54,25 @@ export default function CompetitorDetail() {
   );
 
   const utils = trpc.useUtils();
+  const runResearch = trpc.competitors.runResearch.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.competitors.getById.invalidate({ id: competitorId! }),
+        utils.discovery.getRuns.invalidate({ competitorId: competitorId! }),
+        utils.discovery.getTargets.invalidate({ competitorId: competitorId! }),
+        utils.intelligence.getSources.invalidate({ competitorId: competitorId! }),
+        utils.intelligence.getDocuments.invalidate({ competitorId: competitorId! }),
+        utils.intelligence.getEvents.invalidate({ competitorId: competitorId! }),
+        utils.dynamics.getNewsArticles.invalidate({ competitorId: competitorId! }),
+        utils.organization.getStructure.invalidate({ competitorId: competitorId! }),
+        utils.reports.getAnalysisReport.invalidate({ competitorId: competitorId! }),
+      ]);
+      toast.success("已补跑完整智能研究，请等待几秒后查看最新结果");
+    },
+    onError: (error) => {
+      toast.error(error.message || "补跑智能研究失败");
+    },
+  });
 
   if (competitorLoading) {
     return (
@@ -122,11 +144,44 @@ export default function CompetitorDetail() {
             <h1 className="text-2xl font-bold">{competitor.name}</h1>
             <p className="text-sm text-muted-foreground">{competitor.industry}</p>
           </div>
+          {user?.role === "admin" && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => runResearch.mutate({ id: competitor.id })}
+              disabled={runResearch.isPending}
+            >
+              {runResearch.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  补跑中...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  补跑智能研究
+                </>
+              )}
+            </Button>
+          )}
         </div>
       </header>
 
       {/* Main Content */}
       <main className="container py-8 space-y-8">
+        <DemoWorkflowPanel
+          competitorId={competitorId!}
+          isAdmin={user?.role === "admin"}
+        />
+        <DiscoveryPanel
+          competitorId={competitorId!}
+          isAdmin={user?.role === "admin"}
+        />
+        <IntelligencePanel
+          competitorId={competitorId!}
+          isAdmin={user?.role === "admin"}
+        />
+
         {/* Basic Info */}
         <Card className="glass">
           <CardHeader>

@@ -50,10 +50,7 @@ export function CompetitorCard({ competitor, isAdmin = false, onDeleted }: Compe
 
   return (
     <>
-      <Card
-        className="glass cursor-pointer hover:shadow-lg transition-shadow"
-        onClick={() => setLocation(`/competitor/${competitor.id}`)}
-      >
+      <Card className="glass hover:shadow-lg transition-shadow">
         <CardHeader>
           <div className="flex items-start justify-between">
             <div className="flex-1">
@@ -105,13 +102,20 @@ export function CompetitorCard({ competitor, isAdmin = false, onDeleted }: Compe
 
           {/* Actions */}
           <div className="flex gap-2 pt-2 border-t border-border/30">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1"
+              onClick={() => setLocation(`/competitor/${competitor.id}`)}
+            >
+              查看详情
+            </Button>
+
             {competitor.website && (
               <Button
                 variant="outline"
                 size="sm"
-                className="flex-1"
                 onClick={(e) => {
-                  e.stopPropagation();
                   window.open(competitor.website!, "_blank");
                 }}
               >
@@ -131,7 +135,6 @@ export function CompetitorCard({ competitor, isAdmin = false, onDeleted }: Compe
                   variant="destructive"
                   size="sm"
                   onClick={(e) => {
-                    e.stopPropagation();
                     setShowDeleteDialog(true);
                   }}
                 >

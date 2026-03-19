@@ -1,3 +1,4 @@
+import https from "node:https";
 import { ENV } from "./env";
 
 export type Role = "system" | "user" | "assistant" | "tool" | "function";
@@ -209,10 +210,23 @@ const normalizeToolChoice = (
   return toolChoice;
 };
 
-const resolveApiUrl = () =>
-  ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0
-    ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions`
-    : "https://forge.manus.im/v1/chat/completions";
+const resolveApiUrl = () => {
+  if (!ENV.forgeApiUrl || ENV.forgeApiUrl.trim().length === 0) {
+    return "https://forge.manus.im/v1/chat/completions";
+  }
+
+  const normalized = ENV.forgeApiUrl.replace(/\/$/, "");
+
+  if (/\/chat\/completions$/i.test(normalized)) {
+    return normalized;
+  }
+
+  if (/\/v1$/i.test(normalized)) {
+    return `${normalized}/chat/completions`;
+  }
+
+  return `${normalized}/v1/chat/completions`;
+};
 
 const assertApiKey = () => {
   if (!ENV.forgeApiKey) {
@@ -280,7 +294,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   } = params;
 
   const payload: Record<string, unknown> = {
-    model: "gemini-2.5-flash",
+    model: ENV.forgeModel,
     messages: messages.map(normalizeMessage),
   };
 
@@ -296,10 +310,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.tool_choice = normalizedToolChoice;
   }
 
-  payload.max_tokens = 32768
-  payload.thinking = {
-    "budget_tokens": 128
-  }
+  payload.max_tokens = 32768;
 
   const normalizedResponseFormat = normalizeResponseFormat({
     responseFormat,
@@ -312,21 +323,59 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.response_format = normalizedResponseFormat;
   }
 
-  const response = await fetch(resolveApiUrl(), {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${ENV.forgeApiKey}`,
-    },
-    body: JSON.stringify(payload),
-  });
+  const apiUrl = new URL(resolveApiUrl());
+  const body = JSON.stringify(payload);
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `LLM invoke failed: ${response.status} ${response.statusText} – ${errorText}`
+  return await new Promise<InvokeResult>((resolve, reject) => {
+    const request = https.request(
+      {
+        protocol: apiUrl.protocol,
+        hostname: apiUrl.hostname,
+        port: apiUrl.port || 443,
+        path: `${apiUrl.pathname}${apiUrl.search}`,
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "content-length": Buffer.byteLength(body),
+          authorization: `Bearer ${ENV.forgeApiKey}`,
+        },
+      },
+      (response) => {
+        let responseBody = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => {
+          responseBody += chunk;
+        });
+        response.on("end", () => {
+          if ((response.statusCode || 500) >= 400) {
+            reject(
+              new Error(
+                `LLM invoke failed: ${response.statusCode} ${response.statusMessage} – ${responseBody}`
+              )
+            );
+            return;
+          }
+
+          try {
+            resolve(JSON.parse(responseBody) as InvokeResult);
+          } catch (error) {
+            reject(
+              new Error(
+                `LLM invoke returned invalid JSON: ${
+                  error instanceof Error ? error.message : String(error)
+                } – ${responseBody.slice(0, 1000)}`
+              )
+            );
+          }
+        });
+      }
     );
-  }
 
-  return (await response.json()) as InvokeResult;
+    request.setTimeout(30000, () => {
+      request.destroy(new Error("LLM invoke timed out"));
+    });
+    request.on("error", reject);
+    request.write(body);
+    request.end();
+  });
 }

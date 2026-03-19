@@ -113,3 +113,6 @@ temp/
 # Local Manus debugging artifacts
 .manus/
 .manus-logs/
+
+# Local Codex helper binaries
+.codex-bin/
